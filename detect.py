@@ -6,7 +6,7 @@ from utils.datasets import *
 from utils.utils import *
 
 
-def detect(save_img=False):
+def detect(save_image=True):
     img_size = (320, 192) if ONNX_EXPORT else opt.img_size  # (320, 192) or (416, 256) or (608, 352) for (height, width)
     out, source, weights, half, view_img, save_txt = opt.output, opt.source, opt.weights, opt.half, opt.view_img, opt.save_txt
     webcam = source == '0' or source.startswith('rtsp') or source.startswith('http') or source.endswith('.txt')
@@ -158,9 +158,9 @@ def detect(save_img=False):
 if __name__ == '__main__':
     parser = argparse.ArgumentParser()
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='*.cfg path')
-    parser.add_argument('--names', type=str, default='data/coco.names', help='*.names path')
-    parser.add_argument('--weights', type=str, default='weights/yolov3-spp-ultralytics.pt', help='weights path')
-    parser.add_argument('--source', type=str, default='data/samples', help='source')  # input file/folder, 0 for webcam
+    parser.add_argument('--names', type=str, default='data/aider.names', help='*.names path')
+    parser.add_argument('--weights', type=str, default='weights/best.pt', help='weights path')
+    parser.add_argument('--source', type=str, default='data/custom/test/images', help='source')  # input file/folder, 0 for webcam
     parser.add_argument('--output', type=str, default='output', help='output folder')  # output folder
     parser.add_argument('--img-size', type=int, default=416, help='inference size (pixels)')
     parser.add_argument('--conf-thres', type=float, default=0.3, help='object confidence threshold')
