@@ -9,7 +9,7 @@ from models import *
 from utils.datasets import *
 from utils.utils import *
 
-mixed_precision = True
+mixed_precision = False
 try:  # Mixed precision training https://github.com/NVIDIA/apex
     from apex import amp
 except:
@@ -19,7 +19,7 @@ wdir = 'weights' + os.sep  # weights dir
 last = wdir + 'last.pt'
 best = wdir + 'best.pt'
 results_file = 'results.txt'
-
+#export CUDA_VISIBLE_DEVICES=0
 # Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416) https://github.com/ultralytics/yolov3/issues/310
 
 hyp = {'giou': 1.0,  # giou loss gain
@@ -267,7 +267,9 @@ def train():
                 if sf != 1:
                     ns = [math.ceil(x * sf / 32.) * 32 for x in imgs.shape[2:]]  # new shape (stretched to 32-multiple)
                     imgs = F.interpolate(imgs, size=ns, mode='bilinear', align_corners=False)
-
+            #print state dict
+#            for param_tensor in model.state_dict():
+ #                print(param_tensor, "\t", model.state_dict()[param_tensor].size())
             # Run model
             pred = model(imgs)
 
@@ -394,8 +396,8 @@ if __name__ == '__main__':
     parser.add_argument('--batch-size', type=int, default=16)  # effective bs = batch_size * accumulate = 16 * 4 = 64
     parser.add_argument('--accumulate', type=int, default=4, help='batches to accumulate before optimizing')
     parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='*.cfg path')
-    parser.add_argument('--data', type=str, default='data/coco2017.data', help='*.data path')
-    parser.add_argument('--multi-scale', action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
+    parser.add_argument('--data', type=str, default='data/aider.data', help='*.data path')
+    parser.add_argument('--multi-scale', default=False, action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
     parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='train and test image-sizes')
     parser.add_argument('--rect', action='store_true', help='rectangular training')
     parser.add_argument('--resume', action='store_true', help='resume training from last.pt')

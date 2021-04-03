@@ -15,6 +15,8 @@ import torchvision
 from tqdm import tqdm
 
 from . import torch_utils  # , google_utils
+import warnings
+warnings.filterwarnings( "ignore", lineno=943 )
 
 matplotlib.rc('font', **{'size': 11})
 

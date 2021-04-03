@@ -44,6 +44,18 @@ def create_modules(module_defs, img_size):
             elif mdef['activation'] == 'swish':
                 modules.add_module('activation', Swish())
 
+        elif mdef['type'] == 'acff':
+            filters = int(mdef["filters"])
+            kernel_size = int(mdef["size"])
+            modules.add_module(
+                'acff_{}'.format(i),
+                ACFF(
+                    in_channels=output_filters[-1],
+                    out_channels=filters,
+                    kernel_size=kernel_size
+                ),
+            )
+
         elif mdef['type'] == 'maxpool':
             size = mdef['size']
             stride = mdef['stride']
@@ -65,6 +77,7 @@ def create_modules(module_defs, img_size):
             layers = mdef['layers']
             filters = sum([output_filters[l + 1 if l > 0 else l] for l in layers])
             routs.extend([i + l if l < 0 else l for l in layers])
+
 
         elif mdef['type'] == 'shortcut':  # nn.Sequential() placeholder for 'shortcut' layer
             layers = mdef['from']
@@ -246,6 +259,62 @@ class YOLOLayer(nn.Module):
             return io.view(bs, -1, self.no), p  # view [1, 3, 13, 13, 85] as [1, 507, 85]
 
 
+debug = False
+'''Atrous Convolution Feature Fusion (ACFF) Block'''
+
+
+class ACFF(nn.Module):
+    def __init__(self, in_channels, out_channels, kernel_size,):
+        super(ACFF, self).__init__()
+
+        ''' 
+        Dilated Convolution
+        i = input
+        o = output
+        p = padding
+        k = kernel_size
+        s = stride
+        d = dilation
+        
+        o = [i + 2*p - k - (k-1)*(d-1)]/s + 1
+        '''
+
+        self.conv1 = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=0, dilation=1,
+                               groups=in_channels, bias=True)
+        self.conv2 = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=1, dilation=2,
+                               groups=in_channels, bias=True)
+        self.conv3 = nn.Conv2d(in_channels, in_channels, kernel_size=kernel_size, stride=1, padding=2, dilation=3,
+                               groups=in_channels, bias=True)
+        self.fused_conv = nn.Conv2d(in_channels, out_channels, kernel_size=1, stride=1, padding=0, dilation=1,
+                                    bias=True)
+        self.leaky_relu = nn.LeakyReLU(0.01)
+        self.batch_norm = nn.BatchNorm2d(out_channels)
+        self.dropout = nn.Dropout(0.2)
+
+    def forward(self, x):
+
+        if debug:
+            print('Shape of input in ACFF Forward= ', x.shape)
+            print('Output of layer1(x): ', self.conv1(x).shape)
+            print('Output of layer2(x): ', self.conv2(x).shape)
+            print('Output of layer3(x): ', self.conv3(x).shape)
+
+        # Add Fusion
+        out = self.conv1(x) + self.conv2(x) + self.conv3(x)
+
+        if debug:
+            print('Shape after concat in ACFF forward: ', out.shape)
+
+        out = self.fused_conv(out)
+        out = self.leaky_relu(out)
+        out = self.batch_norm(out)
+        out = self.dropout(out)
+
+        if debug:
+            print('Final shape of ACFF out: ', out.shape, '\n')
+
+        return out
+
 class Darknet(nn.Module):
     # YOLOv3 object detection model
 
@@ -269,9 +338,15 @@ class Darknet(nn.Module):
             print('0', x.shape)
 
         for i, (mdef, module) in enumerate(zip(self.module_defs, self.module_list)):
+
             mtype = mdef['type']
-            if mtype in ['convolutional', 'upsample', 'maxpool']:
-                x = module(x)
+            #print('--------------------------------')
+            #print('--------------------------------------\ni= ',i, "module_def: ",mdef)
+            #print(f'Shape of output= {x.shape}')
+            if mtype in ['convolutional','acff', 'upsample', 'maxpool']:
+#                print(module)
+                 x = module(x)                
+ #               print(x.shape)
             elif mtype == 'shortcut':  # sum
                 if verbose:
                     l = [i - 1] + module.layers  # layers
@@ -280,6 +355,7 @@ class Darknet(nn.Module):
                 x = module(x, out)  # weightedFeatureFusion()
             elif mtype == 'route':  # concat
                 layers = mdef['layers']
+#                print(layers)
                 if verbose:
                     l = [i - 1] + layers  # layers
                     s = [list(x.shape)] + [list(out[i].shape) for i in layers]  # shapes
@@ -288,11 +364,14 @@ class Darknet(nn.Module):
                     x = out[layers[0]]
                 else:
                     try:
-                        x = torch.cat([out[i] for i in layers], 1)
+                       #for i in layers:
+                          #print(out[i].shape)
+                       x = torch.cat([out[i] for i in layers], 1)
                     except:  # apply stride 2 for darknet reorg layer
                         out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
                         x = torch.cat([out[i] for i in layers], 1)
-                    # print(''), [print(out[i].shape) for i in layers], print(x.shape)
+                        print('')
+#                        print(out[i].shape) for i in layers] 
             elif mtype == 'yolo':
                 yolo_out.append(module(x, img_size, out))
             out.append(x if self.routs[i] else [])
