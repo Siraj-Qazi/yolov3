@@ -27,11 +27,11 @@ hyp = {'giou': 1.0,  # giou loss gain
        'cls_pw': 1.0,  # cls BCELoss positive_weight
        'obj': 64.3,  # obj loss gain (*=img_size/320 if img_size != 320)
        'obj_pw': 1.0,  # obj BCELoss positive_weight
-       'iou_t': 0.225,  # iou training threshold
+       'iou_t': 0.3,  # iou training threshold
        'lr0': 0.001,  # initial learning rate (SGD=5E-3, Adam=5E-4)
        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
-       'momentum': 0.937,  # SGD momentum
-       'weight_decay': 0.000484,  # optimizer weight decay
+       'momentum': 0.637,  # SGD momentum
+       'weight_decay': 0.000084,  # optimizer weight decay
        'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
        'hsv_h': 0.0138,  # image HSV-Hue augmentation (fraction)
        'hsv_s': 0.678,  # image HSV-Saturation augmentation (fraction)
@@ -180,12 +180,12 @@ def train():
                                              collate_fn=dataset.collate_fn)
 
     # Testloader
-    testloader = torch.utils.data.DataLoader(LoadImagesAndLabels(test_path, img_size_test, batch_size * 2,
+    testloader = torch.utils.data.DataLoader(LoadImagesAndLabels(test_path, img_size_test, batch_size,
                                                                  hyp=hyp,
-                                                                 rect=True,
+                                                                 rect=False,
                                                                  cache_images=opt.cache_images,
                                                                  single_cls=opt.single_cls),
-                                             batch_size=batch_size * 2,
+                                             batch_size=batch_size,
                                              num_workers=nw,
                                              pin_memory=True,
                                              collate_fn=dataset.collate_fn)
@@ -313,12 +313,12 @@ def train():
             is_coco = any([x in data for x in ['coco.data', 'coco2014.data', 'coco2017.data']]) and model.nc == 80
             results, maps = test.test(cfg,
                                       data,
-                                      batch_size=batch_size * 2,
+                                      batch_size=batch_size,
                                       img_size=img_size_test,
                                       model=model,
                                       conf_thres=0.001 if final_epoch else 0.01,  # 0.001 for best mAP, 0.01 for speed
                                       iou_thres=0.6,
-                                      save_json=final_epoch and is_coco,
+                                      save_json=final_epoch,
                                       single_cls=opt.single_cls,
                                       dataloader=testloader)
 

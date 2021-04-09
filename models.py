@@ -368,7 +368,14 @@ class Darknet(nn.Module):
                           #print(out[i].shape)
                        x = torch.cat([out[i] for i in layers], 1)
                     except:  # apply stride 2 for darknet reorg layer
-                        out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
+                        max_layer = max([ (out[l].shape[3], num) for num,l in enumerate(layers)])
+
+                        if max_layer[1] == 0:
+                            out[layers[1]] = F.interpolate(out[layers[1]], size=max_layer[0])
+                        else:
+                            out[layers[0]] = F.interpolate(out[layers[0]], size=max_layer[0])
+
+                        # out[layers[1]] = F.interpolate(out[layers[1]], scale_factor=[0.5, 0.5])
                         x = torch.cat([out[i] for i in layers], 1)
                         print('')
 #                        print(out[i].shape) for i in layers] 
