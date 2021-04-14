@@ -16,9 +16,11 @@ except:
     mixed_precision = False  # not installed
 
 wdir = 'weights' + os.sep  # weights dir
-last = wdir + 'last.pt'
-best = wdir + 'best.pt'
+best = ''
+last = ''
+saved_weights_name = ''
 results_file = 'results.txt'
+
 #export CUDA_VISIBLE_DEVICES=0
 # Hyperparameters (results68: 59.9 mAP@0.5 yolov3-spp-416) https://github.com/ultralytics/yolov3/issues/310
 
@@ -32,7 +34,7 @@ hyp = {'giou': 1.0,  # giou loss gain
        'lrf': -4.,  # final LambdaLR learning rate = lr0 * (10 ** lrf)
        'momentum': 0.637,  # SGD momentum
        'weight_decay': 0.000084,  # optimizer weight decay
-       'fl_gamma': 0.0,  # focal loss gamma (efficientDet default is gamma=1.5)
+       'fl_gamma': 1.5,  # focal loss gamma (efficientDet default is gamma=1.5)
        'hsv_h': 0.0138,  # image HSV-Hue augmentation (fraction)
        'hsv_s': 0.678,  # image HSV-Saturation augmentation (fraction)
        'hsv_v': 0.36,  # image HSV-Value augmentation (fraction)
@@ -129,7 +131,7 @@ def train():
         del chkpt
 
     elif len(weights) > 0:  # darknet format
-        # possible weights are '*.weights', 'yolov3-tiny.conv.15',  'darknet53.conv.74' etc.
+        # possible weights are '*.weights', 'yolov3-tiny.conv.15', 'yolov4-tiny.conv.29',  'darknet53.conv.74' etc.
         load_darknet_weights(model, weights)
 
     # Mixed precision training https://github.com/NVIDIA/apex
@@ -153,6 +155,11 @@ def train():
     # plt.savefig('LR.png', dpi=300)
 
     # Initialize distributed training
+    dist.init_process_group(backend='nccl',  # 'distributed backend'
+                                init_method='tcp://127.0.0.1:9999',  # distributed training init method
+                                world_size=1,  # number of nodes for distributed training
+                                rank=0)  # distributed training node rank
+
     if device.type != 'cpu' and torch.cuda.device_count() > 1 and torch.distributed.is_available():
         dist.init_process_group(backend='nccl',  # 'distributed backend'
                                 init_method='tcp://127.0.0.1:9999',  # distributed training init method
@@ -372,10 +379,10 @@ def train():
     n = opt.name
     if len(n):
         n = '_' + n if not n.isnumeric() else n
-        fresults, flast, fbest = 'results%s.txt' % n, 'last%s.pt' % n, 'best%s.pt' % n
+        fresults, flast, fbest = 'results%s.txt' % n, saved_weights_name+'last%s.pt' % n, saved_weights_name + 'best%s.pt' % n
         os.rename('results.txt', fresults)
-        os.rename(wdir + 'last.pt', wdir + flast) if os.path.exists(wdir + 'last.pt') else None
-        os.rename(wdir + 'best.pt', wdir + fbest) if os.path.exists(wdir + 'best.pt') else None
+        os.rename(wdir + saved_weights_name+'-last.pt', wdir + flast) if os.path.exists(wdir + saved_weights_name + '-last.pt') else None
+        os.rename(wdir + saved_weights_name+'-best.pt', wdir + fbest) if os.path.exists(wdir + saved_weights_name + '-best.pt') else None
         if opt.bucket:  # save to cloud
             os.system('gsutil cp %s gs://%s/results' % (fresults, opt.bucket))
             os.system('gsutil cp %s gs://%s/weights' % (wdir + flast, opt.bucket))
@@ -395,7 +402,7 @@ if __name__ == '__main__':
     parser.add_argument('--epochs', type=int, default=300)  # 500200 batches at bs 16, 117263 COCO images = 273 epochs
     parser.add_argument('--batch-size', type=int, default=16)  # effective bs = batch_size * accumulate = 16 * 4 = 64
     parser.add_argument('--accumulate', type=int, default=4, help='batches to accumulate before optimizing')
-    parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp.cfg', help='*.cfg path')
+    parser.add_argument('--cfg', type=str, default='cfg/yolov3-spp-aider.cfg', help='*.cfg path')
     parser.add_argument('--data', type=str, default='data/aider.data', help='*.data path')
     parser.add_argument('--multi-scale', default=False, action='store_true', help='adjust (67% - 150%) img_size every 10 batches')
     parser.add_argument('--img-size', nargs='+', type=int, default=[416], help='train and test image-sizes')
@@ -406,7 +413,7 @@ if __name__ == '__main__':
     parser.add_argument('--evolve', action='store_true', help='evolve hyperparameters')
     parser.add_argument('--bucket', type=str, default='', help='gsutil bucket')
     parser.add_argument('--cache-images', action='store_true', help='cache images for faster training')
-    parser.add_argument('--weights', type=str, default='weights/yolov3-spp-ultralytics.pt', help='initial weights path')
+    parser.add_argument('--weights', type=str, default='weights/darknet53.conv.74', help='initial weights path')
     parser.add_argument('--name', default='', help='renames results.txt to results_name.txt if supplied')
     parser.add_argument('--device', default='', help='device id (i.e. 0 or 0,1 or cpu)')
     parser.add_argument('--adam', action='store_true', help='use adam optimizer')
@@ -418,6 +425,10 @@ if __name__ == '__main__':
     device = torch_utils.select_device(opt.device, apex=mixed_precision, batch_size=opt.batch_size)
     if device.type == 'cpu':
         mixed_precision = False
+
+    saved_weights_name = opt.cfg.replace('cfg/','').replace('.cfg','')
+    last = wdir + saved_weights_name+'-last.pt'
+    best = wdir + saved_weights_name+'-best.pt'
 
     # scale hyp['obj'] by img_size (evolved at 320)
     # hyp['obj'] *= opt.img_size[0] / 320.
