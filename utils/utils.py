@@ -16,7 +16,7 @@ from tqdm import tqdm
 
 from . import torch_utils  # , google_utils
 import warnings
-warnings.filterwarnings( "ignore", lineno=943 )
+warnings.filterwarnings("ignore")
 
 matplotlib.rc('font', **{'size': 11})
 
@@ -369,6 +369,19 @@ class FocalLoss(nn.Module):
             return loss
 
 
+class FocalLoss2(nn.modules.loss._WeightedLoss):
+    def __init__(self, weight=None, gamma=2,reduction='mean'):
+        super(FocalLoss, self).__init__(weight,reduction=reduction)
+        self.gamma = gamma
+        self.weight = weight #weight parameter will act as the alpha parameter to balance class weights
+
+    def forward(self, input, target):
+
+        ce_loss = F.cross_entropy(input, target,reduction=self.reduction,weight=self.weight)
+        pt = torch.exp(-ce_loss)
+        focal_loss = ((1 - pt) ** self.gamma * ce_loss).mean()
+        return focal_loss
+
 def smooth_BCE(eps=0.1):  # https://github.com/ultralytics/yolov3/issues/238#issuecomment-598028441
     # return positive, negative label smoothing BCE targets
     return 1.0 - 0.5 * eps, 0.5 * eps
@@ -389,9 +402,10 @@ def compute_loss(p, targets, model):  # predictions, targets, model
     cp, cn = smooth_BCE(eps=0.0)
 
     # focal loss
+    class_weights = torch.Tensor([0.7,0.3])
     g = h['fl_gamma']  # focal loss gamma
     if g > 0:
-        BCEcls, BCEobj = FocalLoss(BCEcls, g), FocalLoss(BCEobj, g)
+        BCEcls, BCEobj = FocalLoss2(weight=class_weights, gamma=g), FocalLoss(BCEobj, g)
 
     # Compute losses
     np, ng = 0, 0  # number grid points, targets
